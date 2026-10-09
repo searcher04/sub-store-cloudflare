@@ -1,0 +1,3 @@
+Deploy verified UI V3 to Cloudflare Workers service 'sub' using existing D1 and unchanged secrets.
+Build source branch: chatgpt/sub-store-ui-v3
+Require passing frontend, Worker, and Wrangler dry-run checks.
