@@ -2,7 +2,9 @@ name: Build Sub-Store UI V3
 on:
   workflow_dispatch:
   push:
-    branches: [chatgpt/sub-store-ui-v3]
+    branches:
+      - chatgpt/sub-store-ui-v3
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -16,19 +18,25 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: '11.7.0'
-      - name: Apply V3 patch
+      - name: Restore V3 patch bundle
         shell: bash
         run: |
-          test -s ui-v3-bundle.zip || { echo "::error::Upload ui-v3-bundle.zip into this branch first."; exit 1; }
-          unzip -q ui-v3-bundle.zip -d /tmp/substore-v3
-          python3 /tmp/substore-v3/sub-store-cloudflare-complete-ui-v3/apply_patch.py --repo .
+          set -euo pipefail
+          test -s ui-v3-payload-base64.txt
+          base64 --decode ui-v3-payload-base64.txt > /tmp/substore-ui-v3-patch.tar.xz
+          echo "de7b8e85b90c8b22b57615bd7a2d97a896800d4658acfc9ea296a6b405c9d0fd  /tmp/substore-ui-v3-patch.tar.xz" | sha256sum --check
+          mkdir -p /tmp/substore-ui-v3
+          tar -xJf /tmp/substore-ui-v3-patch.tar.xz -C /tmp/substore-ui-v3
+          python3 /tmp/substore-ui-v3/apply_patch.py --repo .
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Validate and build frontend
+      - name: Check and build frontend
         run: pnpm run check:frontend
-      - name: Deploy dry run
+      - name: Check worker
+        run: pnpm run check:worker
+      - name: Wrangler dry-run only
         run: pnpm run deploy:dry-run
-      - name: Upload built frontend
+      - name: Upload compiled frontend
         uses: actions/upload-artifact@v4
         with:
           name: substore-ui-v3-dist
