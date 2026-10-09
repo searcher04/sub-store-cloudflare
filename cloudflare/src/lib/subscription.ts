@@ -865,6 +865,13 @@ function parseVless(line: string, index: number): ProxyNode {
     udp: true,
     flow: params.get("flow") || undefined,
     network: params.get("type") || "tcp",
+    "ws-opts": params.get("type") === "ws" ? {
+      path: params.get("path") || "/",
+      ...(params.get("host") ? { headers: { Host: params.get("host") } } : {}),
+    } : undefined,
+    "grpc-opts": params.get("type") === "grpc" ? {
+      "grpc-service-name": params.get("serviceName") || "",
+    } : undefined,
     tls: security !== "none",
     servername: params.get("sni") || undefined,
     encryption: params.get("encryption") || "none",
@@ -1430,14 +1437,14 @@ function isAscii(input: string) {
 function detectFlag(name: string) {
   const text = name.toLowerCase();
   const rules: Array<[RegExp, string]> = [
-    [/香港|港|hong\s*kong|\bhk\b/, "🇭🇰"],
-    [/台湾|台灣|taiwan|\btw\b/, "🇹🇼"],
-    [/新加坡|狮城|獅城|singapore|\bsg\b/, "🇸🇬"],
-    [/日本|东京|東京|大阪|japan|tokyo|osaka|\bjp\b/, "🇯🇵"],
-    [/美国|美國|洛杉矶|洛杉磯|纽约|紐約|united\s*states|los\s*angeles|new\s*york|\bus\b|\busa\b/, "🇺🇸"],
-    [/英国|英國|伦敦|倫敦|united\s*kingdom|london|\buk\b/, "🇬🇧"],
-    [/德国|德國|法兰克福|法蘭克福|germany|frankfurt|\bde\b/, "🇩🇪"],
-    [/韩国|韓國|首尔|首爾|korea|seoul|\bkr\b/, "🇰🇷"],
+    [/香港|港|hong\s*kong|\\bhk(?=\\d|\\b)/, "🇭🇰"],
+    [/台湾|台灣|taiwan|\\btw(?=\\d|\\b)/, "🇹🇼"],
+    [/新加坡|狮城|獅城|singapore|\\bsg(?=\\d|\\b)/, "🇸🇬"],
+    [/日本|东京|東京|大阪|japan|tokyo|osaka|\bjp(?=\d|\b)/, "🇯🇵"],
+    [/美国|美國|洛杉矶|洛杉磯|纽约|紐約|united\s*states|los\s*angeles|new\s*york|\\bus(?=\\d|\\b)|\busa\b/, "🇺🇸"],
+    [/英国|英國|伦敦|倫敦|united\s*kingdom|london|\\buk(?=\\d|\\b)/, "🇬🇧"],
+    [/德国|德國|法兰克福|法蘭克福|germany|frankfurt|\\bde(?=\\d|\\b)/, "🇩🇪"],
+    [/韩国|韓國|首尔|首爾|korea|seoul|\\bkr(?=\\d|\\b)/, "🇰🇷"],
   ];
   return rules.find(([pattern]) => pattern.test(text))?.[1] || "🏳️";
 }
@@ -2063,7 +2070,11 @@ function toSingBoxOutbound(proxy: ProxyNode): SingBoxOutbound | undefined {
       server_port: proxy.port,
       uuid: proxy.uuid,
       flow: proxy.flow,
-      network: proxy.network || "tcp",
+      transport: proxy.network === "ws"
+        ? stripUndefined({ type: "ws", path: (proxy["ws-opts"] as { path?: unknown } | undefined)?.path || "/", headers: (proxy["ws-opts"] as { headers?: unknown } | undefined)?.headers })
+        : proxy.network === "grpc"
+          ? { type: "grpc", service_name: (proxy["grpc-opts"] as { "grpc-service-name"?: unknown } | undefined)?.["grpc-service-name"] || "" }
+          : undefined,
       packet_encoding: "xudp",
       tls: proxy.tls
         ? stripUndefined({
@@ -2241,6 +2252,15 @@ function toProxyUri(proxy: ProxyNode) {
     if (realityOpts?.["short-id"]) params.set("sid", String(realityOpts["short-id"]));
     if (realityOpts?.["public-key"]) params.set("spx", String(realityOpts["spider-x"] || "/"));
     params.set("type", String(proxy.network || "tcp"));
+    if (proxy.network === "ws") {
+      const ws = proxy["ws-opts"] as { path?: string; headers?: { Host?: string } } | undefined;
+      if (ws?.path) params.set("path", ws.path);
+      if (ws?.headers?.Host) params.set("host", ws.headers.Host);
+    }
+    if (proxy.network === "grpc") {
+      const grpc = proxy["grpc-opts"] as { "grpc-service-name"?: string } | undefined;
+      if (grpc?.["grpc-service-name"]) params.set("serviceName", grpc["grpc-service-name"]);
+    }
     if (proxy.flow) params.set("flow", String(proxy.flow));
     return `vless://${encodeURIComponent(String(proxy.uuid))}@${proxy.server}:${proxy.port}?${params.toString()}#${encodeURIComponent(proxy.name)}`;
   }
