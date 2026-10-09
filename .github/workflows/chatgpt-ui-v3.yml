@@ -28,6 +28,19 @@ jobs:
           mkdir -p /tmp/substore-ui-v3
           tar -xJf /tmp/substore-ui-v3-patch.tar.xz -C /tmp/substore-ui-v3
           python3 /tmp/substore-ui-v3/apply_patch.py --repo .
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('frontend/src/views/NodeWorkspace.vue')
+          s = p.read_text('utf-8')
+          changes = {
+            "source.enabled === false": "(source as any).enabled === false",
+            "const raw = result.data?.data?.url;": "const raw = 'data' in result.data ? (result.data.data as any)?.url : undefined;",
+          }
+          for original, updated in changes.items():
+            assert s.count(original) == 1, f"Expected exactly one patch target: {original}"
+            s = s.replace(original, updated)
+          p.write_text(s, encoding='utf-8')
+          PY
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Check and build frontend
