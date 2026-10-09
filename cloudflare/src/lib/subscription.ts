@@ -854,7 +854,7 @@ function parseVless(line: string, index: number): ProxyNode {
   const params = url.searchParams;
   const publicKey = params.get("pbk") || params.get("public-key");
   const shortId = params.get("sid") || params.get("short-id");
-  const security = params.get("security") || (publicKey ? "reality" : "tls");
+  const security = params.get("security") || (publicKey ? "reality" : "none");
 
   return stripUndefined({
     name: decodeURIComponent(url.hash.slice(1) || `vless-${index + 1}`),
@@ -863,6 +863,7 @@ function parseVless(line: string, index: number): ProxyNode {
     port: Number(url.port || 443),
     uuid: decodeURIComponent(url.username),
     udp: true,
+    "packet-encoding": params.get("packetEncoding") || undefined,
     flow: params.get("flow") || undefined,
     network: params.get("type") || "tcp",
     "ws-opts": params.get("type") === "ws" ? {
@@ -2075,7 +2076,7 @@ function toSingBoxOutbound(proxy: ProxyNode): SingBoxOutbound | undefined {
         : proxy.network === "grpc"
           ? { type: "grpc", service_name: (proxy["grpc-opts"] as { "grpc-service-name"?: unknown } | undefined)?.["grpc-service-name"] || "" }
           : undefined,
-      packet_encoding: "xudp",
+      packet_encoding: proxy["packet-encoding"] || "xudp",
       tls: proxy.tls
         ? stripUndefined({
             enabled: true,
@@ -2245,6 +2246,7 @@ function toProxyUri(proxy: ProxyNode) {
     const params = new URLSearchParams();
     const realityOpts = proxy["reality-opts"] as Record<string, unknown> | undefined;
     params.set("encryption", String(proxy.encryption || "none"));
+    if (proxy["packet-encoding"]) params.set("packetEncoding", String(proxy["packet-encoding"]));
     params.set("security", realityOpts ? "reality" : proxy.tls ? "tls" : "none");
     if (proxy.servername) params.set("sni", String(proxy.servername));
     if (proxy["client-fingerprint"]) params.set("fp", String(proxy["client-fingerprint"]));

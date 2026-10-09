@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parse as parseYaml } from "yaml";
 import {
   MAX_REMOTE_SOURCE_RESPONSE_BYTES,
   MAX_REMOTE_SOURCE_URLS,
@@ -34,6 +35,43 @@ describe("subscription parsing and limits", () => {
     const uri = await buildSubscription({ ...options, target: "uri" });
     expect(uri).toContain("path=%2Fedge%3Fa%3D1");
     expect(uri).toContain("host=cdn.example.com");
+  });
+
+  it.each([
+    ["", false],
+    ["&security=none", false],
+    ["&security=tls", true],
+    ["&security=reality&pbk=test-public-key&sid=abcd", true],
+    ["&pbk=test-public-key&sid=abcd", true],
+  ])("preserves VLESS transport security across outputs: %s", async (security, tls) => {
+    const content = `vless://00000000-0000-4000-8000-000000000002@example.com:25555?type=ws&path=%2F${security}#JP2or`;
+    const source = { id: "security", name: "Security", type: "local" as const, url: "", content };
+    const options = { source, sources: [], requestUrl: new URL("https://example.com/download/source/security") };
+    const mihomo = parseYaml(await buildSubscription({ ...options, target: "mihomo" }));
+    expect(mihomo.proxies[0]).toMatchObject({ tls, network: "ws", "ws-opts": { path: "/" } });
+    const singBox = JSON.parse(await buildSubscription({ ...options, target: "sing-box" }));
+    const outbound = singBox.outbounds.find((node: { type: string }) => node.type === "vless");
+    expect(outbound.tls?.enabled ?? false).toBe(tls);
+    if (security.includes("pbk=")) {
+      expect(mihomo.proxies[0]["reality-opts"]).toMatchObject({ "public-key": "test-public-key", "short-id": "abcd" });
+      expect(outbound.tls.reality).toMatchObject({ enabled: true, public_key: "test-public-key", short_id: "abcd" });
+    }
+    const uri = await buildSubscription({ ...options, target: "uri" });
+    expect(validateSubscriptionContent(uri)[0]).toMatchObject({ tls });
+    expect(new URL(uri).searchParams.get("security")).toBe(security.includes("pbk=") ? "reality" : tls ? "tls" : "none");
+  });
+
+  it.each(["xudp", "packetaddr"])("preserves explicit VLESS UDP encoding %s across outputs", async (encoding) => {
+    const content = `vless://00000000-0000-4000-8000-000000000002@example.com:25555?type=ws&packetEncoding=${encoding}#UDP`;
+    const source = { id: "udp", name: "UDP", type: "local" as const, url: "", content };
+    const options = { source, sources: [], requestUrl: new URL("https://example.com/download/source/udp") };
+    const mihomo = parseYaml(await buildSubscription({ ...options, target: "mihomo" }));
+    expect(mihomo.proxies[0]["packet-encoding"]).toBe(encoding);
+    const singBox = JSON.parse(await buildSubscription({ ...options, target: "sing-box" }));
+    expect(singBox.outbounds.find((node: { type: string }) => node.type === "vless").packet_encoding).toBe(encoding);
+    const uri = await buildSubscription({ ...options, target: "uri" });
+    expect(new URL(uri).searchParams.get("packetEncoding")).toBe(encoding);
+    expect(validateSubscriptionContent(uri)[0]).toMatchObject({ "packet-encoding": encoding });
   });
 
   it("preserves VLESS gRPC service name", async () => {
