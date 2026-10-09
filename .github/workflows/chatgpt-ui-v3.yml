@@ -1,0 +1,38 @@
+name: Build Sub-Store UI V3
+on:
+  workflow_dispatch:
+  push:
+    branches: [chatgpt/sub-store-ui-v3]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.7.0'
+      - name: Apply UI patch, if present
+        shell: bash
+        run: |
+          if [ -f ui-v3/apply_patch.py ]; then
+            python3 ui-v3/apply_patch.py --repo .
+          else
+            echo "::warning::UI V3 patch has not been added to this branch yet."
+          fi
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check and build front-end
+        run: pnpm run check:frontend
+      - name: Build workers bundle (dry run, no production writes)
+        run: pnpm run deploy:dry-run
+      - name: Upload front-end build
+        uses: actions/upload-artifact@v4
+        with:
+          name: substore-ui-v3-dist
+          path: frontend/dist
+          if-no-files-found: error
