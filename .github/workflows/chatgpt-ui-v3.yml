@@ -16,21 +16,19 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: '11.7.0'
-      - name: Apply UI patch, if present
+      - name: Apply V3 patch
         shell: bash
         run: |
-          if [ -f ui-v3/apply_patch.py ]; then
-            python3 ui-v3/apply_patch.py --repo .
-          else
-            echo "::warning::UI V3 patch has not been added to this branch yet."
-          fi
+          test -s ui-v3-bundle.zip || { echo "::error::Upload ui-v3-bundle.zip into this branch first."; exit 1; }
+          unzip -q ui-v3-bundle.zip -d /tmp/substore-v3
+          python3 /tmp/substore-v3/sub-store-cloudflare-complete-ui-v3/apply_patch.py --repo .
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Check and build front-end
+      - name: Validate and build frontend
         run: pnpm run check:frontend
-      - name: Build workers bundle (dry run, no production writes)
+      - name: Deploy dry run
         run: pnpm run deploy:dry-run
-      - name: Upload front-end build
+      - name: Upload built frontend
         uses: actions/upload-artifact@v4
         with:
           name: substore-ui-v3-dist
