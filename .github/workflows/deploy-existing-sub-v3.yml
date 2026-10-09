@@ -1,0 +1,91 @@
+name: Deploy verified UI V3 to existing Worker
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - chatgpt/sub-store-ui-v3
+    paths:
+      - '.github/deploy-v3-trigger.txt'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ef783bbdce038784f76c0df7570b9a69
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.7.0'
+      - name: Require Cloudflare credentials
+        shell: bash
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Repository secret CLOUDFLARE_API_TOKEN must be configured before deployment."
+            exit 1
+          fi
+      - name: Apply exact V3 UI patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode ui-v3-payload-base64.txt > /tmp/substore-v3-patch.tar.xz
+          echo "de7b8e85b90c8b22b57615bd7a2d97a896800d4658acfc9ea296a6b405c9d0fd  /tmp/substore-v3-patch.tar.xz" | sha256sum --check
+          mkdir -p /tmp/substore-v3
+          tar -xJf /tmp/substore-v3-patch.tar.xz -C /tmp/substore-v3
+          python3 /tmp/substore-v3/apply_patch.py --repo .
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('frontend/src/views/NodeWorkspace.vue')
+          s = p.read_text('utf-8')
+          changes = {
+            "source.enabled === false": "(source as any).enabled === false",
+            "const raw = result.data?.data?.url;": "const raw = 'data' in result.data ? (result.data.data as any)?.url : undefined;",
+          }
+          for original, updated in changes.items():
+            assert s.count(original) == 1, f"Unexpected UI source change: {original}"
+            s = s.replace(original, updated)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check frontend and backend
+        run: |
+          pnpm run check:frontend
+          pnpm run check:worker
+      - name: Generate exact existing-Worker deploy config
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const config = JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+          config.name = 'sub';
+          config.workers_dev = true;
+          config.d1_databases = [{
+            binding:'DB',
+            database_name:'sub-store-cloudflare',
+            database_id:'a33ef4f8-7e2f-4794-a5ff-30013c9d47e6',
+            migrations_dir:'cloudflare/migrations',
+          }];
+          config.assets = {
+            directory:'frontend/dist',
+            binding:'ASSETS',
+            not_found_handling:'single-page-application',
+            run_worker_first:true,
+          };
+          config.compatibility_date = '2026-07-08';
+          config.compatibility_flags = ['nodejs_compat'];
+          writeFileSync('wrangler.v3.deploy.jsonc',JSON.stringify(config,null,2));
+          console.log('Deployment is limited to existing Worker sub and D1 binding DB.');
+          JS
+      - name: Generate build-time script registry
+        run: pnpm run scripts:generate
+      - name: Validate exact production config via Wrangler dry run
+        run: pnpm --dir cloudflare exec wrangler deploy --dry-run --config ../wrangler.v3.deploy.jsonc
+      - name: Deploy to existing sub Worker, retaining Cloudflare-managed secrets
+        run: pnpm --dir cloudflare exec wrangler deploy --config ../wrangler.v3.deploy.jsonc
