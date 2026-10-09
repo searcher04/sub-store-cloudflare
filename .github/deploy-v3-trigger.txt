@@ -1,3 +1,6 @@
 Deploy verified UI V3 to Cloudflare Workers service 'sub' using existing D1 and unchanged secrets.
 Build source branch: chatgpt/sub-store-ui-v3
 Require passing frontend, Worker, and Wrangler dry-run checks.
+
+Fix VLESS WebSocket and region flags: ec84c4dcd3801688c6ed5239821f417ea23c5bcd
+CI: https://github.com/searcher04/sub-store-cloudflare/actions/runs/37935385743
