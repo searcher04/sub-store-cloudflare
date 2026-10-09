@@ -20,6 +20,33 @@ describe("subscription parsing and limits", () => {
     expect(nodes[0].name).toBe("Parsed Node");
   });
 
+  it("preserves VLESS WebSocket parameters and flags numbered country names", async () => {
+    const input = "vless://00000000-0000-4000-8000-000000000002@example.com:443?encryption=none&type=ws&path=%2Fedge%3Fa%3D1&host=cdn.example.com#JP2or";
+    const source = { id: "vless-ws", name: "WS Source", type: "local" as const, url: "", content: input, filters: [{ type: "flag", mode: "add", tw: "tw" }] };
+    const options = { source, sources: [], requestUrl: new URL("https://example.com/download/source/vless-ws/json") };
+    const json = JSON.parse(await buildSubscription({ ...options, target: "json" })) as { proxies: Array<Record<string, any>> };
+    const node = json.proxies[0];
+    expect(node.name).toBe("🇯🇵 JP2or");
+    expect(node["ws-opts"]?.path).toBe("/edge?a=1");
+    expect(node["ws-opts"]?.headers?.Host).toBe("cdn.example.com");
+    const singBox = JSON.parse(await buildSubscription({ ...options, target: "sing-box" })) as { outbounds: Array<Record<string, any>> };
+    expect(singBox.outbounds.find(o => o.type === "vless")?.transport).toMatchObject({ type: "ws", path: "/edge?a=1", headers: { Host: "cdn.example.com" } });
+    const uri = await buildSubscription({ ...options, target: "uri" });
+    expect(uri).toContain("path=%2Fedge%3Fa%3D1");
+    expect(uri).toContain("host=cdn.example.com");
+  });
+
+  it("preserves VLESS gRPC service name", async () => {
+    const content = "vless://00000000-0000-4000-8000-000000000002@example.com:443?encryption=none&security=tls&type=grpc&serviceName=alpha%2Fbeta#HK01";
+    const source = { id: "grpc", name: "gRPC", type: "local" as const, url: "", content };
+    const options = { source, sources: [], requestUrl: new URL("https://example.com/download/source/grpc/uri") };
+    const output = await buildSubscription({ ...options, target: "json" });
+    const node = JSON.parse(output).proxies[0];
+    expect(node["grpc-opts"]["grpc-service-name"]).toBe("alpha/beta");
+    const uri = await buildSubscription({ ...options, target: "uri" });
+    expect(uri).toContain("serviceName=alpha%2Fbeta");
+  });
+
   it("renders every advertised target", async () => {
     const targets = ["mihomo", "stash", "surge", "surge-mac", "surfboard", "loon", "egern", "shadowrocket", "qx", "sing-box", "v2ray", "uri", "json"] as const;
     for (const target of targets) {
