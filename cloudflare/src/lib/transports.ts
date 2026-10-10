@@ -29,7 +29,18 @@ function compact(input: Options): Options {
 }
 
 export function transportOptions(proxy: ProxyNode): Options {
-  return object(proxy[`${getProxyTransport(proxy)}-opts`]);
+  return object(proxy[`${getProxyTransport(proxy)}-opts`] || proxy[`${proxy.network}-opts`]);
+}
+
+export function mihomoTransportProxy(proxy: ProxyNode): ProxyNode {
+  if (!TRANSPORT_PROTOCOLS.has(proxy.type)) return proxy;
+  const network = getProxyTransport(proxy);
+  if (network === "httpupgrade") {
+    return { ...proxy, network: "ws", "ws-opts": { ...websocketOptions(proxy), "v2ray-http-upgrade": true } };
+  }
+  if (proxy.network === "raw") return { ...proxy, network: "tcp" };
+  if (proxy.network === "splithttp") return { ...proxy, network: "xhttp", "xhttp-opts": transportOptions(proxy) };
+  return proxy;
 }
 
 export function parseUriTransport(params: URLSearchParams): Options {
@@ -128,7 +139,7 @@ export function transportCompatibilityError(proxy: ProxyNode, target: Subscripti
   if (!TRANSPORT_PROTOCOLS.has(proxy.type) || target === "json") return undefined;
   const network = getProxyTransport(proxy);
   if (network === "xhttp" && proxy.type !== "vless") return `${proxy.name}: XHTTP is only supported for VLESS`;
-  const supported: string[] = target === "mihomo" ? ["tcp", "ws", "grpc", "h2", "http", "xhttp"]
+  const supported: string[] = target === "mihomo" ? ["tcp", "ws", "grpc", "h2", "http", "httpupgrade", "xhttp"]
     : target === "stash" ? ["tcp", "ws", "grpc", "h2", "http"]
       : target === "sing-box" ? ["tcp", "ws", "grpc", "h2", "http", "httpupgrade"]
         : target === "uri" || target === "shadowrocket" ? ["tcp", "ws", "grpc", "h2", "http", "httpupgrade", "xhttp"]

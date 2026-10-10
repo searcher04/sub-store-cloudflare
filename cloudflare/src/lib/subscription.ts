@@ -9,7 +9,7 @@ import {
 } from "./limits";
 import { readResponseText, utf8ByteLength } from "./read";
 import { applyScriptAction, validateScriptActions } from "./scripts";
-import { appendUriTransport, assertTransportCompatibility, getProxyTransport, parseUriTransport, singBoxTransport, transportCompatibilityError, transportOptions } from "./transports";
+import { appendUriTransport, assertTransportCompatibility, getProxyTransport, mihomoTransportProxy, parseUriTransport, singBoxTransport, transportCompatibilityError, transportOptions } from "./transports";
 import type {
   AppSettings,
   FilterRule,
@@ -1526,7 +1526,7 @@ function renderMihomoYaml(proxies: ProxyNode[], requestUrl: URL, template?: Rout
     "log-level": logLevel,
     ...(config.dns ? { dns: config.dns } : {}),
     ...(config.sniffer ? { sniffer: config.sniffer } : {}),
-    proxies: proxies.map(stripUndefined),
+    proxies: proxies.map(mihomoTransportProxy).map(stripUndefined),
     "proxy-groups": renderTemplateProxyGroups(proxies, proxyGroups),
     ...(ruleProviders ? { "rule-providers": ruleProviders } : {}),
     rules: config.rules && config.rules.length > 0 ? config.rules : ["MATCH,🚀 节点选择"],

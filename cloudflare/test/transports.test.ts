@@ -39,10 +39,11 @@ describe("lossless transport conversion", () => {
     expect(validateSubscriptionContent(uri)[0]).toEqual(validateSubscriptionContent(input)[0]);
     const encoded = await build(json, "v2ray");
     expect(new TextDecoder().decode(Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0)))).toBe(uri);
+    const yaml = await build(json, "mihomo");
+    expect(getProxyTransport(validateSubscriptionContent(yaml)[0])).toBe(network);
     if (network !== "httpupgrade") {
-      const yaml = await build(json, "mihomo");
       expect(validateSubscriptionContent(yaml)[0]).toMatchObject(JSON.parse(json).proxies[0]);
-    }
+    } else expect(validateSubscriptionContent(yaml)[0]).toMatchObject({ network: "ws", "ws-opts": { path: "/edge", "v2ray-http-upgrade": true } });
     if (network === "xhttp") await expect(build(json, "sing-box")).rejects.toThrow("cannot represent xhttp");
     else {
       const singbox = JSON.parse(await build(json, "sing-box"));
