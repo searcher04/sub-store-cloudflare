@@ -2,6 +2,6 @@ Deploy verified UI V3 to Cloudflare Workers service 'sub' using existing D1 and 
 Build source branch: chatgpt/sub-store-ui-v3
 Require passing frontend, Worker, and Wrangler dry-run checks.
 
-Fix VLESS TLS defaults and UDP encoding: 57c266552f419045d2f2ac3c6330ae4a362c3747
-Validation: 35 Worker tests and TypeScript checks passed.
-CI: https://github.com/searcher04/sub-store-cloudflare/actions/runs/37938140343
+Fix all supported region flag rules and preserve existing flags: 420b734be461022141f2dda0d0364d629919293e
+Validation: 39 Worker tests, 39 name samples across four outputs, and TypeScript checks passed.
+CI: https://github.com/searcher04/sub-store-cloudflare/actions/runs/38054462473
