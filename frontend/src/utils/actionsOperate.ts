@@ -48,6 +48,7 @@ export const addItem = (
       break;
     case 'Region Filter':
     case 'Type Filter':
+    case 'Transport Filter':
       obj.component = shallowRef(FilterSelect);
       form.process.push({ id, type, args: args ?? [], customName });
       break;

@@ -600,6 +600,14 @@ export default {
           tipsTitle: "Node Type Filter Tips",
           tipsDes: "Node type filter Operation Description"
         },
+        "Transport Filter": {
+          label: "Transport Filter",
+          des: ["Transport", "Mode"],
+          modeOptions: ["Retain", "Remove"],
+          options: ["Plain TCP / RAW", "WebSocket", "gRPC", "Legacy HTTP/2 (H2)", "HTTP camouflage", "HTTPUpgrade", "XHTTP"],
+          tipsTitle: "Transport Filter Tips",
+          tipsDes: "Filter protocol and transport separately. VLESS can use TCP, WebSocket, gRPC or XHTTP; legacy H2 is a different transport.",
+        },
         "Regex Filter": {
           label: "Regex Filter",
           des: [

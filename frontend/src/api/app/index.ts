@@ -16,6 +16,7 @@ const SOURCE_ACTION_TYPES = new Set([
   'Quick Setting Operator',
   'Region Filter',
   'Type Filter',
+  'Transport Filter',
   'Regex Filter',
   'Flag Operator',
   'Resolve Domain Operator',
@@ -121,14 +122,16 @@ const exactTypePattern = (items: unknown[]): string => {
   return values.length > 0 ? `${TYPE_FILTER_PATTERN_PREFIX}${values.join('|')}${TYPE_FILTER_PATTERN_SUFFIX}` : '';
 };
 
-const typeValuesFromPattern = (pattern: unknown): string[] => {
+const TRANSPORT_FILTER_VALUES = ['tcp', 'ws', 'grpc', 'h2', 'http', 'httpupgrade', 'xhttp'];
+
+const typeValuesFromPattern = (pattern: unknown, allowedValues = TYPE_FILTER_VALUES): string[] => {
   const text = String(pattern || '');
   if (text.startsWith(TYPE_FILTER_PATTERN_PREFIX) && text.endsWith(TYPE_FILTER_PATTERN_SUFFIX)) {
     return text
       .slice(TYPE_FILTER_PATTERN_PREFIX.length, -TYPE_FILTER_PATTERN_SUFFIX.length)
       .split('|')
       .map(item => item.replace(/\\([.*+?^${}()|[\]\\])/g, '$1'))
-      .filter(item => TYPE_FILTER_VALUES.includes(item));
+      .filter(item => allowedValues.includes(item));
   }
   return [];
 };
@@ -184,11 +187,11 @@ const toApiFilters = (process: unknown) => {
       return [{ type: item.args?.keep === false ? 'exclude' : 'include', field: 'name', pattern }];
     }
 
-    if (item.type === 'Type Filter') {
+    if (item.type === 'Type Filter' || item.type === 'Transport Filter') {
       const values = Array.isArray(item.args?.value) ? item.args.value : Array.isArray(item.args) ? item.args : [];
       const pattern = exactTypePattern(values);
       if (!pattern) return [];
-      return [{ type: item.args?.keep === false ? 'exclude' : 'include', field: 'type', pattern }];
+      return [{ type: item.args?.keep === false ? 'exclude' : 'include', field: item.type === 'Transport Filter' ? 'network' : 'type', pattern }];
     }
 
     if (item.type === 'Regex Filter') {
@@ -279,12 +282,12 @@ const fromApiFilters = (filters: unknown): UiProcess[] => {
     .filter((filter): filter is JsonMap => Boolean(filter) && typeof filter === 'object')
     .forEach((filter) => {
       if (filter.type === 'include' || filter.type === 'exclude') {
-        if (filter.field === 'type') {
-          const typeValues = typeValuesFromPattern(filter.pattern);
+        if (filter.field === 'type' || filter.field === 'network') {
+          const typeValues = typeValuesFromPattern(filter.pattern, filter.field === 'network' ? TRANSPORT_FILTER_VALUES : TYPE_FILTER_VALUES);
           if (typeValues.length > 0) {
             output.push({
               id: newUiId(),
-              type: 'Type Filter',
+              type: filter.field === 'network' ? 'Transport Filter' : 'Type Filter',
               args: {
                 keep: filter.type === 'include',
                 value: typeValues,

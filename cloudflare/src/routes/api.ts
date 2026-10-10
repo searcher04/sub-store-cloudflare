@@ -854,6 +854,11 @@ function processToFilter(input: unknown): FilterRule | FilterRule[] | undefined 
   const item = objectValue(input);
   if (!item.type || item.disabled === true) return undefined;
   const args = objectValue(item.args);
+  if (item.type === "Transport Filter") {
+    const values = stringArray(args.value).filter((value) => ["tcp", "ws", "grpc", "h2", "http", "httpupgrade", "xhttp"].includes(value));
+    if (!values.length) return undefined;
+    return { type: args.keep === false ? "exclude" : "include", field: "network", pattern: `^(?:${values.join("|")})$` };
+  }
   if (["include", "exclude", "rename", "delete-field", "dedupe", "sort", "regex-sort", "flag", "quick", "resolve", "script"].includes(String(item.type))) {
     const { id: _id, customName: _customName, disabled: _disabled, ...filter } = item;
     return filter as FilterRule;

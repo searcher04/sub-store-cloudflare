@@ -43,6 +43,10 @@
   // 此处 key 需要与 i18n 的 actions 中的 key 相同
   // 值的次序需要与该选项的 options 值 顺序相同
   const opt = {
+    'Transport Filter': {
+      mode: [0, 1],
+      value: ['tcp', 'ws', 'grpc', 'h2', 'http', 'httpupgrade', 'xhttp'],
+    },
     'Region Filter': {
       mode: [0, 1],
       value: ['HK', 'TW', 'SG', 'JP', 'UK', 'US', 'DE', 'KR']

@@ -998,6 +998,7 @@ watchEffect(() => {
             break;
           case "Region Filter":
           case "Type Filter":
+          case "Transport Filter":
             action.component = shallowRef(FilterSelect);
             break;
           case "Regex Filter":

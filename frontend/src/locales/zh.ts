@@ -600,6 +600,14 @@ export default {
           tipsTitle: "节点类型过滤操作提示",
           tipsDes: "按照代理协议类型过滤节点"
         },
+        "Transport Filter": {
+          label: "传输方式过滤",
+          des: ["传输方式", "工作模式"],
+          modeOptions: ["保留模式", "过滤模式"],
+          options: ["普通 TCP / RAW", "WebSocket", "gRPC", "旧式 HTTP/2（H2）", "HTTP 伪装", "HTTPUpgrade", "XHTTP"],
+          tipsTitle: "传输方式过滤提示",
+          tipsDes: "协议与传输方式分别筛选。VLESS 可使用 TCP、WebSocket、gRPC、XHTTP 等；旧式 H2 与 XHTTP 不同。",
+        },
         "Regex Filter": {
           label: "正则过滤",
           des: [

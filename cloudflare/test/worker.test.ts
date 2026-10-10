@@ -5,6 +5,31 @@ const ADMIN_TOKEN = "test-admin-token";
 const DOWNLOAD_TOKEN = "test-download-token";
 
 describe("Worker and D1 integration", () => {
+  it("saves transport filters and returns an actionable error for unsupported downloads", async () => {
+    const content = JSON.stringify({ proxies: [
+      { name: "Plain TCP", type: "vless", server: "example.com", port: 443, uuid: "00000000-0000-4000-8000-000000000002" },
+      { name: "Old H2", type: "vless", server: "example.com", port: 443, uuid: "00000000-0000-4000-8000-000000000002", network: "h2", "h2-opts": { path: "/edge" } },
+    ] });
+    const create = await workerRequest("/api/sources", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "transport-source", name: "Transport", type: "local", content }),
+    });
+    expect(create.status).toBe(200);
+    const invalid = await workerRequest(`/download/source/transport-source/v2ray/${DOWNLOAD_TOKEN}`, {}, false);
+    expect(invalid.status).toBe(422);
+    expect(getPath(await jsonObject(invalid), "error", "message")).toContain("current Xray/v2rayN removed legacy H2");
+    const update = await workerRequest("/api/sources/transport-source", {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ process: [{ type: "Transport Filter", args: { keep: true, value: ["tcp"] } }] }),
+    });
+    expect(update.status).toBe(200);
+    const download = await workerRequest(`/download/source/transport-source/v2ray/${DOWNLOAD_TOKEN}`, {}, false);
+    expect(download.status).toBe(200);
+    const uri = atob(await download.text());
+    expect(uri).toContain("Plain%20TCP");
+    expect(uri).not.toContain("Old%20H2");
+  });
+
   it("applies migrations and keeps built-in templates out of D1", async () => {
     const tables = await env.DB.prepare(
       "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",

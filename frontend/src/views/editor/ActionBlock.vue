@@ -271,6 +271,7 @@ const types = Object.keys(i18nFile.editorPage.subConfig.nodeActions);
 const supportedActionTypes = [
   'Region Filter',
   'Type Filter',
+  'Transport Filter',
   'Regex Filter',
   'Flag Operator',
   'Resolve Domain Operator',

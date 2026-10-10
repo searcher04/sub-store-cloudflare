@@ -9,6 +9,7 @@ import {
 } from "./limits";
 import { readResponseText, utf8ByteLength } from "./read";
 import { applyScriptAction, validateScriptActions } from "./scripts";
+import { appendUriTransport, assertTransportCompatibility, getProxyTransport, parseUriTransport, singBoxTransport, transportCompatibilityError, transportOptions } from "./transports";
 import type {
   AppSettings,
   FilterRule,
@@ -124,6 +125,12 @@ export async function convertSubscriptionContent(input: {
     targetPlatform: input.target,
     sourceId: "one-shot",
   }));
+  assertTransportCompatibility(processed, input.target);
+  const warnings = processed.flatMap((proxy) => {
+    const transportError = transportCompatibilityError(proxy, input.target);
+    if (transportError) return [transportError];
+    return isTargetCompatible(proxy, input.target) ? [] : [`${proxy.name}: ${proxy.type} cannot be represented by ${input.target}`];
+  });
   const supported = processed.filter((proxy) => isTargetCompatible(proxy, input.target));
   const output = renderTarget(supported, input.target, input.template?.config);
   return {
@@ -131,13 +138,12 @@ export async function convertSubscriptionContent(input: {
     parsed: parsed.length,
     emitted: supported.length,
     skipped: processed.length - supported.length,
-    warnings: processed.length === supported.length
-      ? []
-      : [`${processed.length - supported.length} node(s) cannot be represented by ${input.target}`],
+    warnings,
   };
 }
 
 export function isTargetCompatible(proxy: ProxyNode, target: SubscriptionTarget) {
+  if (transportCompatibilityError(proxy, target)) return false;
   if (target === "mihomo" || target === "stash" || target === "json") return true;
   const commonUri = ["ss", "ssr", "vmess", "vless", "trojan", "hysteria", "hysteria2", "tuic", "anytls", "http", "socks5", "wireguard"];
   if (target === "uri" || target === "v2ray" || target === "shadowrocket") return commonUri.includes(proxy.type);
@@ -865,17 +871,12 @@ function parseVless(line: string, index: number): ProxyNode {
     udp: true,
     "packet-encoding": params.get("packetEncoding") || undefined,
     flow: params.get("flow") || undefined,
-    network: params.get("type") || "tcp",
-    "ws-opts": params.get("type") === "ws" ? {
-      path: params.get("path") || "/",
-      ...(params.get("host") ? { headers: { Host: params.get("host") } } : {}),
-    } : undefined,
-    "grpc-opts": params.get("type") === "grpc" ? {
-      "grpc-service-name": params.get("serviceName") || "",
-    } : undefined,
+    ...parseUriTransport(params),
     tls: security !== "none",
     servername: params.get("sni") || undefined,
     encryption: params.get("encryption") || "none",
+    alpn: commaList(params.get("alpn")),
+    "skip-cert-verify": boolParam(params.get("allowInsecure") || params.get("insecure")),
     "client-fingerprint": params.get("fp") || "chrome",
     "reality-opts": publicKey ? stripUndefined({ "public-key": publicKey, "short-id": shortId, "spider-x": params.get("spx") || "/" }) : undefined,
   });
@@ -942,6 +943,8 @@ function parseTrojan(line: string, index: number): ProxyNode {
     password: decodeURIComponent(url.username),
     sni: url.searchParams.get("sni") || url.searchParams.get("peer") || undefined,
     "skip-cert-verify": boolParam(url.searchParams.get("allowInsecure")),
+    ...parseUriTransport(url.searchParams),
+    alpn: commaList(url.searchParams.get("alpn")),
     udp: true,
   });
 }
@@ -949,6 +952,10 @@ function parseTrojan(line: string, index: number): ProxyNode {
 function parseVmess(line: string, index: number): ProxyNode | undefined {
   try {
     const payload = JSON.parse(atob(line.slice("vmess://".length)));
+    const params = new URLSearchParams({ type: payload.net || "tcp" });
+    if (payload.path) params.set(payload.net === "grpc" ? "serviceName" : "path", String(payload.path));
+    if (payload.host) params.set("host", String(payload.host));
+    if (payload.net === "grpc" && ["gun", "multi"].includes(payload.type)) params.set("mode", payload.type);
     return stripUndefined({
       name: payload.ps || `vmess-${index + 1}`,
       type: "vmess",
@@ -959,8 +966,7 @@ function parseVmess(line: string, index: number): ProxyNode | undefined {
       cipher: payload.scy || "auto",
       tls: payload.tls === "tls",
       servername: payload.sni || payload.host || undefined,
-      network: payload.net || "tcp",
-      "ws-opts": payload.net === "ws" ? { path: payload.path || "/", headers: { Host: payload.host } } : undefined,
+      ...parseUriTransport(params),
       udp: true,
     });
   } catch {
@@ -1118,7 +1124,8 @@ function matchFilter(proxies: ProxyNode[], filter: FilterRule, keepMatches: bool
   const pattern = compileRegex(filter.pattern);
   const field = filter.field || "name";
   return proxies.filter((proxy) => {
-    const matched = pattern.test(String(getByPath(proxy, field) || ""));
+    const value = field === "network" ? getProxyTransport(proxy) : getByPath(proxy, field);
+    const matched = pattern.test(String(value || ""));
     return keepMatches ? matched : !matched;
   });
 }
@@ -1672,6 +1679,7 @@ function toSurfboardProxyLine(proxy: ProxyNode) {
 }
 
 function renderTarget(proxies: ProxyNode[], target: SubscriptionTarget, template?: RoutingTemplateConfig) {
+  assertTransportCompatibility(proxies, target);
   if (proxies.length === 0) throw new Error(`No supported nodes for ${target} output`);
   if (target === "mihomo" || target === "stash") return renderMihomoYaml(proxies, new URL("https://sub-store.local/convert"), template);
   if (target === "surge") return renderSurgeProxies(proxies);
@@ -1687,6 +1695,7 @@ function renderTarget(proxies: ProxyNode[], target: SubscriptionTarget, template
 }
 
 function renderBuildTarget(proxies: ProxyNode[], options: BuildOptions) {
+  assertTransportCompatibility(proxies, options.target);
   if (options.target === "mihomo" || options.target === "stash") return renderMihomoYaml(proxies, options.requestUrl, options.template?.config);
   if (options.target === "surge") return renderSurgeProxies(proxies);
   if (options.target === "surge-mac") return renderSurgeMacProxies(proxies);
@@ -2074,16 +2083,14 @@ function toSingBoxOutbound(proxy: ProxyNode): SingBoxOutbound | undefined {
       server_port: proxy.port,
       uuid: proxy.uuid,
       flow: proxy.flow,
-      transport: proxy.network === "ws"
-        ? stripUndefined({ type: "ws", path: (proxy["ws-opts"] as { path?: unknown } | undefined)?.path || "/", headers: (proxy["ws-opts"] as { headers?: unknown } | undefined)?.headers })
-        : proxy.network === "grpc"
-          ? { type: "grpc", service_name: (proxy["grpc-opts"] as { "grpc-service-name"?: unknown } | undefined)?.["grpc-service-name"] || "" }
-          : undefined,
+      transport: singBoxTransport(proxy),
       packet_encoding: proxy["packet-encoding"] || "xudp",
       tls: proxy.tls
         ? stripUndefined({
             enabled: true,
             server_name: proxy.servername,
+            alpn: proxy.alpn,
+            insecure: proxy["skip-cert-verify"],
             utls: { enabled: true, fingerprint: proxy["client-fingerprint"] || "chrome" },
             reality: realityOpts
               ? stripUndefined({ enabled: true, public_key: realityOpts["public-key"], short_id: realityOpts["short-id"] })
@@ -2158,6 +2165,7 @@ function toSingBoxOutbound(proxy: ProxyNode): SingBoxOutbound | undefined {
       server_port: proxy.port,
       password: proxy.password,
       tls: { enabled: true, server_name: proxy.sni, insecure: Boolean(proxy["skip-cert-verify"]) },
+      transport: singBoxTransport(proxy),
     });
   }
 
@@ -2222,14 +2230,7 @@ function toSingBoxOutbound(proxy: ProxyNode): SingBoxOutbound | undefined {
       security: proxy.cipher || "auto",
       alter_id: proxy.alterId,
       tls: proxy.tls ? { enabled: true, server_name: proxy.servername } : undefined,
-      transport:
-        proxy.network === "ws"
-          ? {
-              type: "ws",
-              path: (proxy["ws-opts"] as { path?: unknown } | undefined)?.path || "/",
-              headers: (proxy["ws-opts"] as { headers?: unknown } | undefined)?.headers,
-            }
-          : undefined,
+      transport: singBoxTransport(proxy),
     });
   }
 
@@ -2256,16 +2257,9 @@ function toProxyUri(proxy: ProxyNode) {
     if (realityOpts?.["public-key"]) params.set("pbk", String(realityOpts["public-key"]));
     if (realityOpts?.["short-id"]) params.set("sid", String(realityOpts["short-id"]));
     if (realityOpts?.["public-key"]) params.set("spx", String(realityOpts["spider-x"] || "/"));
-    params.set("type", String(proxy.network || "tcp"));
-    if (proxy.network === "ws") {
-      const ws = proxy["ws-opts"] as { path?: string; headers?: { Host?: string } } | undefined;
-      if (ws?.path) params.set("path", ws.path);
-      if (ws?.headers?.Host) params.set("host", ws.headers.Host);
-    }
-    if (proxy.network === "grpc") {
-      const grpc = proxy["grpc-opts"] as { "grpc-service-name"?: string } | undefined;
-      if (grpc?.["grpc-service-name"]) params.set("serviceName", grpc["grpc-service-name"]);
-    }
+    appendUriTransport(params, proxy);
+    if (proxy.alpn) params.set("alpn", formatAlpn(proxy.alpn));
+    if (proxy["skip-cert-verify"]) params.set("allowInsecure", "1");
     if (proxy.flow) params.set("flow", String(proxy.flow));
     return `vless://${encodeURIComponent(String(proxy.uuid))}@${proxy.server}:${proxy.port}?${params.toString()}#${encodeURIComponent(proxy.name)}`;
   }
@@ -2314,6 +2308,8 @@ function toProxyUri(proxy: ProxyNode) {
     const params = new URLSearchParams();
     if (proxy.sni) params.set("sni", String(proxy.sni));
     if (proxy["skip-cert-verify"]) params.set("allowInsecure", "1");
+    appendUriTransport(params, proxy);
+    if (proxy.alpn) params.set("alpn", formatAlpn(proxy.alpn));
     return `trojan://${encodeURIComponent(String(proxy.password))}@${proxy.server}:${proxy.port}?${params.toString()}#${encodeURIComponent(proxy.name)}`;
   }
 
@@ -2363,7 +2359,9 @@ function toProxyUri(proxy: ProxyNode) {
   }
 
   if (proxy.type === "vmess") {
-    const wsOpts = proxy["ws-opts"] as { path?: unknown; headers?: { Host?: unknown } } | undefined;
+    const network = getProxyTransport(proxy);
+    const opts = network === "httpupgrade" ? proxy["ws-opts"] as Record<string, unknown> : transportOptions(proxy);
+    const headers = opts?.headers as Record<string, unknown> | undefined;
     return `vmess://${base64Utf8(
       JSON.stringify({
         v: "2",
@@ -2375,10 +2373,10 @@ function toProxyUri(proxy: ProxyNode) {
         scy: proxy.cipher || "auto",
         tls: proxy.tls ? "tls" : "",
         sni: proxy.servername || "",
-        net: proxy.network || "tcp",
-        type: "none",
-        host: wsOpts?.headers?.Host || "",
-        path: wsOpts?.path || "",
+        net: network === "h2" ? "http" : network,
+        type: network === "grpc" ? opts?.mode || "gun" : "none",
+        host: opts?.host ? (Array.isArray(opts.host) ? opts.host.join(",") : opts.host) : headers?.Host || "",
+        path: network === "grpc" ? opts?.["grpc-service-name"] || "" : opts?.path || "",
       }),
     )}`;
   }

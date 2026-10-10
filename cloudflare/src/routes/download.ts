@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { failed, isTokenValid } from "../lib/http";
+import { TransportConversionError } from "../lib/transports";
 import { authorizeScopedDownload } from "../lib/compatibility-resources";
 import { buildSubscriptionResult, getTargetContentType, normalizeTarget, normalizeTargetAlias } from "../lib/subscription";
 import { getRoutingTemplate, getSettings, getSource, getSubscriptionCollection, getSubscriptionSources } from "../lib/store";
@@ -94,7 +95,7 @@ async function renderDownload(
     setResponseHeader(headers, "x-sub-store-cache", result.metadata.cacheStatus);
     return new Response(result.body, { headers });
   } catch (error) {
-    return failed(c, error instanceof Error ? error.message : String(error), 500);
+    return failed(c, error instanceof Error ? error.message : String(error), error instanceof TransportConversionError ? 422 : 500);
   }
 }
 
