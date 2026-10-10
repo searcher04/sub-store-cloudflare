@@ -1436,16 +1436,19 @@ function isAscii(input: string) {
 }
 
 function detectFlag(name: string) {
+  const existingFlag = name.trimStart().match(/^\p{Regional_Indicator}{2}/u)?.[0];
+  if (existingFlag) return existingFlag;
+
   const text = name.toLowerCase();
   const rules: Array<[RegExp, string]> = [
-    [/香港|港|hong\s*kong|\\bhk(?=\\d|\\b)/, "🇭🇰"],
-    [/台湾|台灣|taiwan|\\btw(?=\\d|\\b)/, "🇹🇼"],
-    [/新加坡|狮城|獅城|singapore|\\bsg(?=\\d|\\b)/, "🇸🇬"],
-    [/日本|东京|東京|大阪|japan|tokyo|osaka|\bjp(?=\d|\b)/, "🇯🇵"],
-    [/美国|美國|洛杉矶|洛杉磯|纽约|紐約|united\s*states|los\s*angeles|new\s*york|\\bus(?=\\d|\\b)|\busa\b/, "🇺🇸"],
-    [/英国|英國|伦敦|倫敦|united\s*kingdom|london|\\buk(?=\\d|\\b)/, "🇬🇧"],
-    [/德国|德國|法兰克福|法蘭克福|germany|frankfurt|\\bde(?=\\d|\\b)/, "🇩🇪"],
-    [/韩国|韓國|首尔|首爾|korea|seoul|\\bkr(?=\\d|\\b)/, "🇰🇷"],
+    [/香港|港|hong\s*kong|(?:^|[^a-z])hk(?=\d|[^a-z]|$)/, "🇭🇰"],
+    [/台湾|台灣|taiwan|(?:^|[^a-z])tw(?=\d|[^a-z]|$)/, "🇹🇼"],
+    [/新加坡|狮城|獅城|singapore|(?:^|[^a-z])sg(?=\d|[^a-z]|$)/, "🇸🇬"],
+    [/日本|东京|東京|大阪|japan|tokyo|osaka|(?:^|[^a-z])jp(?=\d|[^a-z]|$)/, "🇯🇵"],
+    [/美国|美國|洛杉矶|洛杉磯|纽约|紐約|united\s*states|los\s*angeles|new\s*york|(?:^|[^a-z])us(?=\d|[^a-z]|$)|(?:^|[^a-z])usa(?=\d|[^a-z]|$)/, "🇺🇸"],
+    [/英国|英國|伦敦|倫敦|united\s*kingdom|london|(?:^|[^a-z])uk(?=\d|[^a-z]|$)/, "🇬🇧"],
+    [/德国|德國|法兰克福|法蘭克福|germany|frankfurt|(?:^|[^a-z])de(?=\d|[^a-z]|$)/, "🇩🇪"],
+    [/韩国|韓國|首尔|首爾|korea|seoul|(?:^|[^a-z])kr(?=\d|[^a-z]|$)/, "🇰🇷"],
   ];
   return rules.find(([pattern]) => pattern.test(text))?.[1] || "🏳️";
 }

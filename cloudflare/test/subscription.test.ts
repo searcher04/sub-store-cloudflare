@@ -37,6 +37,85 @@ describe("subscription parsing and limits", () => {
     expect(uri).toContain("host=cdn.example.com");
   });
 
+  it("detects every supported region abbreviation and preserves existing flags", async () => {
+    const cases = [
+      ["AnyTLS-HK", "🇭🇰"],
+      ["HK01", "🇭🇰"],
+      ["hK_02", "🇭🇰"],
+      ["SG01", "🇸🇬"],
+      ["TW01", "🇹🇼"],
+      ["JP2or", "🇯🇵"],
+      ["Vless-US", "🇺🇸"],
+      ["UK01", "🇬🇧"],
+      ["DE01", "🇩🇪"],
+      ["KR01", "🇰🇷"],
+      ["香港线路", "🇭🇰"],
+      ["Hong Kong", "🇭🇰"],
+      ["台湾线路", "🇹🇼"],
+      ["Taiwan", "🇹🇼"],
+      ["新加坡线路", "🇸🇬"],
+      ["Singapore", "🇸🇬"],
+      ["东京线路", "🇯🇵"],
+      ["Japan", "🇯🇵"],
+      ["美国线路", "🇺🇸"],
+      ["United States", "🇺🇸"],
+      ["USA01", "🇺🇸"],
+      ["伦敦线路", "🇬🇧"],
+      ["United Kingdom", "🇬🇧"],
+      ["法兰克福线路", "🇩🇪"],
+      ["Germany", "🇩🇪"],
+      ["首尔线路", "🇰🇷"],
+      ["Korea", "🇰🇷"],
+      ["🇯🇵 Already flagged", "🇯🇵"],
+      ["🇨🇦 DMIT", "🇨🇦"],
+      ["  🇭🇰 Preserved", "🇭🇰"],
+      ["🇺🇸 Existing-US", "🇺🇸"],
+      ["DMIT", "🏳️"],
+      ["business", "🏳️"],
+      ["network", "🏳️"],
+      ["model", "🏳️"],
+      ["Ukraine", "🏳️"],
+      ["JPTest", "🏳️"],
+      ["DEMO", "🏳️"],
+      ["SGCloud", "🏳️"],
+    ] as const;
+    const content = cases
+      .map(([name]) => `vless://00000000-0000-4000-8000-000000000002@example.com:443?security=tls#${encodeURIComponent(name)}`)
+      .join("\n");
+    const source = {
+      id: "regions",
+      name: "Regions",
+      type: "local" as const,
+      url: "",
+      content,
+      filters: [{ type: "flag", mode: "add", tw: "tw" }],
+    };
+    const options = { source, sources: [], requestUrl: new URL("https://example.com/download/source/regions") };
+    const expected = cases.map(([name, flag]) => `${flag} ${name.trim().replace(/^\p{Regional_Indicator}{2}\s*/u, "")}`);
+    const json = JSON.parse(await buildSubscription({ ...options, target: "json" })) as { proxies: Array<{ name: string }> };
+    expect(json.proxies.map(({ name }) => name)).toEqual(expected);
+    const mihomo = parseYaml(await buildSubscription({ ...options, target: "mihomo" })) as { proxies: Array<{ name: string }> };
+    expect(mihomo.proxies.map(({ name }) => name)).toEqual(expected);
+    const uri = await buildSubscription({ ...options, target: "uri" });
+    expect(uri.split("\n").map((line) => decodeURIComponent(new URL(line).hash.slice(1)))).toEqual(expected);
+    const v2ray = await buildSubscription({ ...options, target: "v2ray" });
+    const decoded = new TextDecoder().decode(Uint8Array.from(atob(v2ray), (char) => char.charCodeAt(0)));
+    expect(decoded).toBe(uri);
+    const repeatedSource = { ...source, content: uri };
+    const repeated = JSON.parse(await buildSubscription({ ...options, source: repeatedSource, target: "json" })) as { proxies: Array<{ name: string }> };
+    expect(repeated.proxies.map(({ name }) => name)).toEqual(expected);
+  });
+
+  it.each([["tw", "🇹🇼"], ["cn", "🇨🇳"], ["ws", "🇼🇸"]])("respects Taiwan flag preference %s", async (tw, flag) => {
+    const source = {
+      id: "taiwan", name: "Taiwan", type: "local" as const, url: "",
+      content: "vless://00000000-0000-4000-8000-000000000002@example.com:443#%F0%9F%87%B9%F0%9F%87%BC%20TW01",
+      filters: [{ type: "flag", mode: "add", tw }],
+    };
+    const result = JSON.parse(await buildSubscription({ source, sources: [], requestUrl: new URL("https://example.com/download/source/taiwan"), target: "json" }));
+    expect(result.proxies[0].name).toBe(`${flag} TW01`);
+  });
+
   it.each([
     ["", false],
     ["&security=none", false],
